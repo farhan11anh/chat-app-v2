@@ -262,29 +262,29 @@ export function chatPage(data: ChatPageData): string {
       const area = document.getElementById('messagesArea');
       if (area) area.scrollTop = area.scrollHeight;
 
-      // SSE
-      let eventSource = null;
-      function connectSSE() {
+      // Polling for new messages
+      let pollTimer = null;
+      function startPolling() {
         if (!activeUserId) return;
-        if (eventSource) eventSource.close();
-        eventSource = new EventSource('/chat/' + activeUserId + '/events?lastId=' + lastMessageId);
-        eventSource.onmessage = function(e) {
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.id > lastMessageId) {
-              lastMessageId = msg.id;
-              if (msg.sender_id !== currentUserId) {
-                appendMessage(msg, false);
+        pollTimer = setInterval(function() {
+          fetch('/api/chat/' + activeUserId + '/poll?lastId=' + lastMessageId)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data.messages && data.messages.length) {
+                data.messages.forEach(function(msg) {
+                  if (msg.id > lastMessageId) {
+                    lastMessageId = msg.id;
+                    if (msg.sender_id !== currentUserId) {
+                      appendMessage(msg, false);
+                    }
+                  }
+                });
               }
-            }
-          } catch(err) { console.error('SSE parse error:', err); }
-        };
-        eventSource.onerror = function() {
-          eventSource.close();
-          setTimeout(connectSSE, 3000);
-        };
+            })
+            .catch(function(err) { console.error('Poll error:', err); });
+        }, 2000);
       }
-      connectSSE();
+      startPolling();
 
       function escapeHtml(str) {
         const d = document.createElement('div');

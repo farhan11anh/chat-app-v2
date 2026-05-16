@@ -241,71 +241,23 @@ app.post('/chat/:userId/send', async (c) => {
   return c.json({ ok: true, message });
 });
 
-// SSE endpoint
-app.get('/chat/:userId/events', async (c) => {
+// Polling endpoint for new messages
+app.get('/api/chat/:userId/poll', async (c) => {
   const session = c.get('session');
   const targetId = parseInt(c.req.param('userId'), 10);
   const lastId = parseInt(c.req.query('lastId') || '0', 10);
 
   if (isNaN(targetId) || targetId === session.userId) {
-    return c.text('Invalid', 400);
+    return c.json({ error: 'Invalid' }, 400);
   }
 
   const targetUser = await getUserById(c.env.DB, targetId);
-  if (!targetUser) return c.text('Not found', 404);
+  if (!targetUser) return c.json({ error: 'Not found' }, 404);
 
   const conversation = await getOrCreateConversation(c.env.DB, session.userId, targetId);
+  const messages = await getNewMessages(c.env.DB, conversation.id, lastId);
 
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
-  const encoder = new TextEncoder();
-
-  let currentLastId = lastId;
-  let running = true;
-
-  async function poll() {
-    try {
-      const newMessages = await getNewMessages(c.env.DB, conversation.id, currentLastId);
-      for (const msg of newMessages) {
-        await writer.write(encoder.encode(`data: ${JSON.stringify(msg)}\n\n`));
-        currentLastId = msg.id;
-      }
-      if (!newMessages.length) {
-        await writer.write(encoder.encode(`: keepalive\n\n`));
-      }
-    } catch (e) {
-      running = false;
-    }
-  }
-
-  // Initial poll + periodic polling
-  const intervalId = setInterval(async () => {
-    if (!running) {
-      clearInterval(intervalId);
-      try { await writer.close(); } catch {}
-      return;
-    }
-    await poll();
-  }, 2000);
-
-  // First immediate poll
-  await poll();
-
-  // Close after 30 seconds to avoid long-running connections on free tier
-  setTimeout(async () => {
-    running = false;
-    clearInterval(intervalId);
-    try { await writer.close(); } catch {}
-  }, 30000);
-
-  return new Response(readable, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
+  return c.json({ messages });
 });
 
 // API contacts

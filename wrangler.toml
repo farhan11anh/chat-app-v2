@@ -6,4 +6,4 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "chat-db"
-database_id = "REPLACE_WITH_YOUR_D1_ID"
+database_id = "3f6157ad-c819-4fc7-8308-7c6ed33baa9a"
